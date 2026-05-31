@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docs Assistant — Azure &amp; Kubernetes</title>
+<style>
+  :root { color-scheme: light; --fg:#1a1a1a; --muted:#666; --line:#e3e3e3; --accent:#0a66c2; --bg:#fafafa; --card:#fff; --azure:#0a66c2; --k8s:#326ce5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--fg); background:var(--bg); }
+  header { padding:18px 20px; border-bottom:1px solid var(--line); background:var(--card); }
+  header h1 { margin:0; font-size:18px; } header p { margin:3px 0 0; color:var(--muted); font-size:12.5px; }
+  .wrap { max-width:780px; margin:0 auto; padding:0 16px; }
+  #transcript { padding:18px 0 130px; min-height:50vh; }
+  .msg { margin:14px 0; }
+  .q { font-weight:600; }
+  .a { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:13px 15px; margin-top:6px; line-height:1.55; font-size:14.5px; white-space:pre-wrap; }
+  .badge { display:inline-block; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; vertical-align:middle; margin-left:8px; }
+  .badge.azure { background:#eaf2fb; color:var(--azure); } .badge.k8s { background:#eaf0fc; color:var(--k8s); }
+  .cites { margin-top:10px; padding-top:9px; border-top:1px solid var(--line); font-size:12.5px; }
+  .cites a { color:var(--accent); text-decoration:none; display:block; margin:3px 0; }
+  .cites a:hover { text-decoration:underline; }
+  .err { color:#b00020; font-size:13px; }
+  .composer { position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--line); }
+  .composer .wrap { display:flex; gap:8px; align-items:flex-end; padding:12px 16px; }
+  textarea { flex:1; resize:none; border:1px solid var(--line); border-radius:9px; padding:10px 12px; font:inherit; font-size:14px; height:46px; max-height:130px; }
+  select { border:1px solid var(--line); border-radius:9px; padding:0 8px; height:46px; font:inherit; background:var(--card); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:9px; padding:0 18px; height:46px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .hint { color:var(--muted); font-size:12px; padding:6px 0; }
+  .examples a { color:var(--accent); text-decoration:none; margin-right:14px; font-size:12.5px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Docs Assistant <span style="color:var(--muted);font-weight:400;font-size:13px">· grounded answers with citations</span></h1>
+  <p>Ask about <b>Microsoft Azure</b> or <b>Kubernetes</b> — answers are retrieved from the official docs and cited. English, Deutsch, Български.</p>
+</div></header>
+
+<div class="wrap">
+  <div id="transcript">
+    <div class="hint">Try:
+      <span class="examples">
+        <a onclick="ex('How do I enable authentication on an Azure App Service web app?')">Azure auth</a>
+        <a onclick="ex('How do I scale a deployment in Kubernetes?')">K8s scaling</a>
+        <a onclick="ex('Wie aktiviere ich die Authentifizierung für eine App Service Web-App?')">auf Deutsch</a>
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="composer"><div class="wrap">
+  <textarea id="q" placeholder="Ask about Azure or Kubernetes…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send();}"></textarea>
+  <select id="lang" title="Answer language">
+    <option value="auto">Auto</option><option value="en">EN</option><option value="de">DE</option><option value="bg">BG</option>
+  </select>
+  <button id="send" onclick="send()">Ask</button>
+</div></div>
+
+<script>
+  // === Backend URL — set after the public endpoint is provisioned ===
+  const API_BASE = "REPLACE_WITH_BACKEND_URL";
+
+  const t = document.getElementById('transcript');
+  function ex(s){ document.getElementById('q').value = s; send(); }
+  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  function linkifyCitations(answer, citations){
+    const byId = {}; (citations||[]).forEach(c => byId[c.chunk_id] = c.source_url);
+    return esc(answer).replace(/\[(\d+)\]/g, (m,id) => byId[id] ? `<a href="${byId[id]}" target="_blank" rel="noopener">[${id}]</a>` : m);
+  }
+  async function send(){
+    const qi = document.getElementById('q'); const q = qi.value.trim(); if(!q) return;
+    const lang = document.getElementById('lang').value;
+    const btn = document.getElementById('send'); btn.disabled = true; qi.value='';
+    const block = document.createElement('div'); block.className='msg';
+    block.innerHTML = `<div class="q">${esc(q)}</div><div class="a">…thinking…</div>`;
+    t.appendChild(block); window.scrollTo(0, document.body.scrollHeight);
+    const a = block.querySelector('.a');
+    try {
+      if (API_BASE.startsWith('REPLACE')) throw new Error('Backend not connected yet.');
+      const r = await fetch(API_BASE.replace(/\/$/,'') + '/query', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ question:q, lang: lang==='auto' ? undefined : lang })
+      });
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      const badge = d.bot ? `<span class="badge ${d.bot}">${d.bot}</span>` : '';
+      let html = linkifyCitations(d.answer || '(no answer)', d.citations) + badge;
+      if ((d.citations||[]).length){
+        html += '<div class="cites"><b>Sources</b>' + d.citations.map(c =>
+          `<a href="${c.source_url}" target="_blank" rel="noopener">[${c.chunk_id}] ${esc(c.title||c.source_url)}</a>`).join('') + '</div>';
+      }
+      a.innerHTML = html;
+    } catch(e){ a.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+    btn.disabled = false; window.scrollTo(0, document.body.scrollHeight);
+  }
+</script>
+</body>
+</html>
