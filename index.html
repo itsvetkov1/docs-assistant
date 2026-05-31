@@ -59,7 +59,7 @@
 
 <script>
   // === Backend URL — set after the public endpoint is provisioned ===
-  const API_BASE = "REPLACE_WITH_BACKEND_URL";
+  const API_BASE = "https://spokesman-blandness-commodore.ngrok-free.dev";
 
   const t = document.getElementById('transcript');
   function ex(s){ document.getElementById('q').value = s; send(); }
@@ -79,7 +79,7 @@
     try {
       if (API_BASE.startsWith('REPLACE')) throw new Error('Backend not connected yet.');
       const r = await fetch(API_BASE.replace(/\/$/,'') + '/query', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
         body: JSON.stringify({ question:q, lang: lang==='auto' ? undefined : lang })
       });
       if(!r.ok) throw new Error('HTTP '+r.status);
