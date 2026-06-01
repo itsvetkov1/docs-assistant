@@ -81,8 +81,7 @@
     let answerText = ''; let final = null;
     try {
       if (API_BASE.startsWith('REPLACE')) throw new Error('Backend not connected yet.');
-      const body = { question:q, history: convHistory.slice(-6) };
-      if (lang !== 'auto') body.lang = lang;
+      const body = { question:q, lang: lang, history: convHistory.slice(-6) };
       const r = await fetch(API_BASE.replace(/\/$/,'') + '/query/stream', {
         method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
         body: JSON.stringify(body)
