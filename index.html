@@ -51,9 +51,6 @@
 
 <div class="composer"><div class="wrap">
   <textarea id="q" placeholder="Ask about Azure or Kubernetes…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send();}"></textarea>
-  <select id="lang" title="Answer language">
-    <option value="auto">Auto</option><option value="en">EN</option><option value="de">DE</option><option value="bg">BG</option>
-  </select>
   <button id="send" onclick="send()">Ask</button>
 </div></div>
 
@@ -72,7 +69,6 @@
   let convHistory = [];
   async function send(){
     const qi = document.getElementById('q'); const q = qi.value.trim(); if(!q) return;
-    const lang = document.getElementById('lang').value;
     const btn = document.getElementById('send'); btn.disabled = true; qi.value='';
     const block = document.createElement('div'); block.className='msg';
     block.innerHTML = `<div class="q">${esc(q)}</div><div class="a"><span style="color:var(--muted)">…</span></div>`;
@@ -81,7 +77,7 @@
     let answerText = ''; let final = null;
     try {
       if (API_BASE.startsWith('REPLACE')) throw new Error('Backend not connected yet.');
-      const body = { question:q, lang: lang, history: convHistory.slice(-6) };
+      const body = { question:q, lang: 'auto', history: convHistory.slice(-6) };
       const r = await fetch(API_BASE.replace(/\/$/,'') + '/query/stream', {
         method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
         body: JSON.stringify(body)
