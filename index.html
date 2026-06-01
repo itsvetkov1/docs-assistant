@@ -68,29 +68,53 @@
     const byId = {}; (citations||[]).forEach(c => byId[c.chunk_id] = c.source_url);
     return esc(answer).replace(/\[(\d+)\]/g, (m,id) => byId[id] ? `<a href="${byId[id]}" target="_blank" rel="noopener">[${id}]</a>` : m);
   }
+  // Conversation memory: prior user turns are sent so follow-ups ("add a trigger to it") resolve.
+  let convHistory = [];
   async function send(){
     const qi = document.getElementById('q'); const q = qi.value.trim(); if(!q) return;
     const lang = document.getElementById('lang').value;
     const btn = document.getElementById('send'); btn.disabled = true; qi.value='';
     const block = document.createElement('div'); block.className='msg';
-    block.innerHTML = `<div class="q">${esc(q)}</div><div class="a">…thinking…</div>`;
+    block.innerHTML = `<div class="q">${esc(q)}</div><div class="a"><span style="color:var(--muted)">…</span></div>`;
     t.appendChild(block); window.scrollTo(0, document.body.scrollHeight);
     const a = block.querySelector('.a');
+    let answerText = ''; let final = null;
     try {
       if (API_BASE.startsWith('REPLACE')) throw new Error('Backend not connected yet.');
-      const r = await fetch(API_BASE.replace(/\/$/,'') + '/query', {
+      const body = { question:q, history: convHistory.slice(-6) };
+      if (lang !== 'auto') body.lang = lang;
+      const r = await fetch(API_BASE.replace(/\/$/,'') + '/query/stream', {
         method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
-        body: JSON.stringify({ question:q, lang: lang==='auto' ? undefined : lang })
+        body: JSON.stringify(body)
       });
       if(!r.ok) throw new Error('HTTP '+r.status);
-      const d = await r.json();
-      const badge = d.bot ? `<span class="badge ${d.bot}">${d.bot}</span>` : '';
-      let html = linkifyCitations(d.answer || '(no answer)', d.citations) + badge;
-      if ((d.citations||[]).length){
-        html += '<div class="cites"><b>Sources</b>' + d.citations.map(c =>
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      for(;;){
+        const { value, done } = await reader.read(); if(done) break;
+        buf += dec.decode(value, { stream:true });
+        let i;
+        while((i = buf.indexOf('\n\n')) >= 0){
+          const evline = buf.slice(0, i); buf = buf.slice(i + 2);
+          const dl = evline.split('\n').find(l => l.startsWith('data:')); if(!dl) continue;
+          let ev; try { ev = JSON.parse(dl.slice(5).trim()); } catch(_) { continue; }
+          if(ev.type === 'token'){
+            answerText += ev.text;
+            a.innerHTML = linkifyCitations(answerText, (final && final.citations) || []);
+            window.scrollTo(0, document.body.scrollHeight);
+          } else if(ev.type === 'final'){ final = ev; }
+          else if(ev.type === 'error'){ throw new Error(ev.error || 'stream error'); }
+        }
+      }
+      const cits = (final && final.citations) || [];
+      const bot = final && final.bot;
+      const badge = bot ? `<span class="badge ${bot}">${bot}</span>` : '';
+      let html = linkifyCitations(answerText || '(no answer)', cits) + badge;
+      if (cits.length){
+        html += '<div class="cites"><b>Sources</b>' + cits.map(c =>
           `<a href="${c.source_url}" target="_blank" rel="noopener">[${c.chunk_id}] ${esc(c.title||c.source_url)}</a>`).join('') + '</div>';
       }
       a.innerHTML = html;
+      convHistory.push(q);
     } catch(e){ a.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
     btn.disabled = false; window.scrollTo(0, document.body.scrollHeight);
   }
